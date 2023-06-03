@@ -7,7 +7,7 @@ module simplified_sha256 #(parameter integer NUM_OF_WORDS = 20)(
  input logic [31:0] mem_read_data);
 
 // FSM state variables 
-enum logic [2:0] {IDLE, READ, BLOCK, COMPUTE, WRITE} state;
+enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE, WRITE} state;
 
 // NOTE : Below mentioned frame work is for reference purpose.
 // Local variables might not be complete and you might have to add more variables
@@ -15,7 +15,7 @@ enum logic [2:0] {IDLE, READ, BLOCK, COMPUTE, WRITE} state;
 
 // Local variables
 logic [31:0] w[64];
-logic [31:0] message[20];
+//logic [31:0] message[20];
 logic [31:0] wt;
 logic [31:0] h0, h1, h2, h3, h4, h5, h6, h7;
 logic [31:0] a, b, c, d, e, f, g, h;
@@ -25,7 +25,7 @@ logic [ 7:0] num_blocks;
 logic        cur_we;
 logic [15:0] cur_addr;
 logic [31:0] cur_write_data;
-logic [512:0] memory_block;
+logic [32:0] memory_block[16];
 logic [ 7:0] tstep;
 
 // SHA256 K constants
@@ -40,6 +40,9 @@ parameter int k[0:63] = '{
    32'h748f82ee,32'h78a5636f,32'h84c87814,32'h8cc70208,32'h90befffa,32'ha4506ceb,32'hbef9a3f7,32'hc67178f2
 };
 
+parameter int init_h[0:7] = '{
+	32'h6a09e667, 32'hbb67ae85, 32'h3c6ef372, 32'ha54ff53a, 32'h510e527f, 32'h9b05688c, 32'h1f83d9ab, 32'h5be0cd19
+};
 
 assign num_blocks = determine_num_blocks(NUM_OF_WORDS); 
 assign tstep = (i - 1);
@@ -61,11 +64,11 @@ begin
     S1 = rightrotate(e, 6) ^ rightrotate(e, 11) ^ rightrotate(e, 25);
     // Student to add remaning code below
     // Refer to SHA256 discussion slides to get logic for this function
-    ch = 
-    t1 = 
-    S0 = 
-    maj = 
-    t2 = 
+    ch = (e & f) ^ ((~e) & g);
+    t1 = h + S1 + ch + k[t] + w;
+    S0 = rightrotate(a, 2) ^ rightrotate(a, 13) ^ rightrotate(a, 22);
+    maj = (a & b) ^ (a & c) ^ (b & c);
+    t2 = S0 + maj;
     sha256_op = {t1 + t2, a, b, c, d + t1, e, f, g};
 end
 endfunction
@@ -109,10 +112,29 @@ begin
     IDLE: begin 
        if(start) begin
        // Student to add rest of the code  
-
-
-
-
+		h0 <= init_h[0];
+		h1 <= init_h[1];
+		h2 <= init_h[2];
+		h3 <= init_h[3];
+		h4 <= init_h[4];
+		h5 <= init_h[5];
+		h6 <= init_h[6];
+		h7 <= init_h[7];
+		
+		a <= init_h[0];
+		b <= init_h[1];
+		c <= init_h[2];
+		d <= init_h[3];
+		e <= init_h[4];
+		f <= init_h[5];
+		g <= init_h[6];
+		h <= init_h[7];
+		
+		cur_addr <= message_addr; //only change curr_addr every block
+		cur_we <= 0;
+		offset <= 0;
+		
+		state <= READ_0;
        end
     end
 
@@ -158,7 +180,23 @@ begin
 
         end
     end
-
+	 //Read one block of message into message_block
+	 READ_0: begin
+	 cur_we <= 0;
+	 offset <= 1;
+	 state <= READ_1;
+	 
+	 end
+	 READ_1: begin
+	 if(offset<64) begin
+		memory_block[offset-1][31:0] <= mem_read_data;
+	 
+		cur_we <= 0;
+		offset <= offset + 1;
+		state <= READ_1;
+	 end
+	 else state <= BLOCK;
+	 end
     // h0 to h7 each are 32 bit hashes, which makes up total 256 bit value
     // h0 to h7 after compute stage has final computed hash value
     // write back these h0 to h7 to memory starting from output_addr
