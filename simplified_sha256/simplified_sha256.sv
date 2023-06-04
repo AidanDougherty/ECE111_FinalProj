@@ -7,26 +7,29 @@ module simplified_sha256 #(parameter integer NUM_OF_WORDS = 20)(
  input logic [31:0] mem_read_data);
 
 // FSM state variables 
-enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE, WRITE} state;
+enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE_0, COMPUTE_1, WRITE} state;
 
 // NOTE : Below mentioned frame work is for reference purpose.
 // Local variables might not be complete and you might have to add more variables
 // or modify these variables. Code below is more as a reference.
 
 // Local variables
-logic [31:0] w[64];
-//logic [31:0] message[20];
-logic [31:0] wt;
+logic [31:0] w[16]; //block pre expansion
+logic [31:0] w_t[64]; //block post expansion
+logic [63:0] message_length;
+logic [31:0] words_remaining;
+//logic [31:0] wt;
 logic [31:0] h0, h1, h2, h3, h4, h5, h6, h7;
 logic [31:0] a, b, c, d, e, f, g, h;
-logic [ 7:0] i, j;
+logic [ 7:0] i, j; //j = block counter, i = sha compression round counter
 logic [15:0] offset; // in word address
 logic [ 7:0] num_blocks;
 logic        cur_we;
 logic [15:0] cur_addr;
 logic [31:0] cur_write_data;
-logic [32:0] memory_block[16];
+//logic [32:0] memory_block[16];
 logic [ 7:0] tstep;
+logic [ 7:0] words_to_read;
 
 // SHA256 K constants
 parameter int k[0:63] = '{
@@ -45,13 +48,15 @@ parameter int init_h[0:7] = '{
 };
 
 assign num_blocks = determine_num_blocks(NUM_OF_WORDS); 
-assign tstep = (i - 1);
+//assign tstep = (i - 1);
+assign message_length = 32*NUM_OF_WORDS;
+assign words_remaining = NUM_OF_WORDS - j*16;
 
 // Note : Function defined are for reference purpose. Feel free to add more functions or modify below.
 // Function to determine number of blocks in memory to fetch
 function logic [15:0] determine_num_blocks(input logic [31:0] size);
 
-  // Student to add function implementation
+  determine_num_blocks = ((size+2)/16) + 1;
 
 endfunction
 
@@ -60,7 +65,7 @@ endfunction
 function logic [255:0] sha256_op(input logic [31:0] a, b, c, d, e, f, g, h, w,
                                  input logic [7:0] t);
     logic [31:0] S1, S0, ch, maj, t1, t2; // internal signals
-begin
+
     S1 = rightrotate(e, 6) ^ rightrotate(e, 11) ^ rightrotate(e, 25);
     // Student to add remaning code below
     // Refer to SHA256 discussion slides to get logic for this function
@@ -70,8 +75,18 @@ begin
     maj = (a & b) ^ (a & c) ^ (b & c);
     t2 = S0 + maj;
     sha256_op = {t1 + t2, a, b, c, d + t1, e, f, g};
-end
+
 endfunction
+
+
+//Function for Word Expansion
+function logic [31:0] wtnew; // function with no inputs
+logic [31:0] s0, s1;
+s0 = rightrotate(w[1],7)^rightrotate(w[1],18)^(w[1]>>3);
+s1 = rightrotate(w[14],17)^rightrotate(w[14],19)^(w[14]>>10);
+wtnew = w[0] + s0 + w[9] + s1;
+endfunction
+
 
 
 // Generate request to memory
@@ -130,11 +145,16 @@ begin
 		g <= init_h[6];
 		h <= init_h[7];
 		
+		j <= 0;
+		i <= 0;
+		
 		cur_addr <= message_addr; //only change curr_addr every block
 		cur_we <= 0;
 		offset <= 0;
 		
-		state <= READ_0;
+		
+		state <= BLOCK;
+		
        end
     end
 
@@ -142,18 +162,39 @@ begin
     // Get a BLOCK from the memory, COMPUTE Hash output using SHA256 function    
     // and write back hash value back to memory
     BLOCK: begin
-	// Fetch message in 512-bit block size
-	// For each of 512-bit block initiate hash value computation
-       
-
-
-
-   
-
-
-
-
-    
+	// read one block from memory, special case for 14 words remaining
+    if(j<num_blocks -1 && words_remaining>16) begin
+		words_to_read <= 8'd16;
+		state <= READ_0;
+	 end
+	 else if(j == num_blocks -2 && words_remaining===14) begin
+	 //special case
+		state<= WRITE;
+	 end
+	 //normal case
+	 //create last block using last words of msg, padding, and msg size
+	 //first load remaining words into w
+	 else if(j === num_blocks -1 && words_to_read!==words_remaining) begin
+		words_to_read <= words_remaining;
+		cur_addr <= cur_addr + offset - 1;
+		offset<=0;
+		state<= READ_0;
+	 end
+	 else if(j=== num_blocks -1 && words_to_read === words_remaining) begin//build rest of block
+		w[words_remaining] <= 32'h80000000;
+		for(int w_index = 1; w_index<14; w_index++) begin
+		if(w_index + words_remaining <14)
+		w[w_index+words_remaining] <= 32'h00000000;
+		end
+		w[14] <= message_length[63:32];
+		w[15] <= message_length[31:0];
+		state <= COMPUTE_0;
+	 end
+		
+	 else begin //j> num_blocks -1, move to write
+	 state <= WRITE;
+	 
+	 end
 
     end
 
@@ -161,26 +202,39 @@ begin
     // Go back to BLOCK stage after each block hash computation is completed and if
     // there are still number of message blocks available in memory otherwise
     // move to WRITE stage
-    COMPUTE: begin
-	// 64 processing rounds steps for 512-bit block 
-        if (i <= 64) begin
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        end
+    COMPUTE_0: begin
+	// First 16 Word expansion, then move to 64 processing rounds steps for 512-bit block 
+		  for (int n = 0; n<16; n++)
+		  w_t[n] <= w[n]; //keep first 16 words the same
+		  
+		  
+		  state <= COMPUTE_1;
+	 end
+	 COMPUTE_1: begin
+	 //do 1 compression and 1 word expansion per cycle
+		  if(i<64) begin
+				
+				if(i<48) begin //do 1 word expansion (first 16 already done, so only need 48 more)
+				for (int m = 0; m < 15; m++) w[m] = w[m+1]; // just wires
+				w[15] = wtnew();
+				w_t[i+16] = w[15];
+				end
+				//do 1 compression
+				{a, b, c, d, e, f, g, h} = sha256_op(a, b, c, d, e, f, g, h, w_t[i], i);
+				
+				i= i+1;
+				state <= COMPUTE_1;
+		  end
+		  else begin
+		  {h0, h1, h2, h3, h4, h5, h6, h7} <= {a+h0, b+h1, c+h2, d+h3, e+h4, f+h5, g+h6, h+h7}; 
+		  {a, b, c, d, e, f, g, h} <= {a+h0, b+h1, c+h2, d+h3, e+h4, f+h5, g+h6, h+h7}; //set h0-h7,a-h to be current stage hash + init hash used at input
+		  j <= j+1;
+		  i<= 0;
+		  state<=BLOCK;
+		  end
+       
     end
-	 //Read one block of message into message_block
+	 //Read words_to_read number of words from memory into w, then move to compute
 	 READ_0: begin
 	 cur_we <= 0;
 	 offset <= 1;
@@ -188,22 +242,26 @@ begin
 	 
 	 end
 	 READ_1: begin
-	 if(offset<64) begin
-		memory_block[offset-1][31:0] <= mem_read_data;
+	 if(offset<words_to_read+1) begin
+		w[offset-1][31:0] <= mem_read_data;
 	 
 		cur_we <= 0;
 		offset <= offset + 1;
 		state <= READ_1;
 	 end
-	 else state <= BLOCK;
+	 else if (words_to_read === words_remaining) begin
+	 state <= BLOCK; //reading into last block
 	 end
+	 else state <= COMPUTE_0;
+	 end
+
     // h0 to h7 each are 32 bit hashes, which makes up total 256 bit value
     // h0 to h7 after compute stage has final computed hash value
     // write back these h0 to h7 to memory starting from output_addr
     WRITE: begin
    
 
-
+	state<=IDLE;
     end
    endcase
   end
