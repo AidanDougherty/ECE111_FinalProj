@@ -7,7 +7,7 @@ module simplified_sha256 #(parameter integer NUM_OF_WORDS = 20)(
  input logic [31:0] mem_read_data);
 
 // FSM state variables 
-enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE_0, COMPUTE_1, WRITE} state;
+enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE_0, COMPUTE_1, WRITE_0, WRITE_1} state;
 
 // NOTE : Below mentioned frame work is for reference purpose.
 // Local variables might not be complete and you might have to add more variables
@@ -20,6 +20,7 @@ logic [63:0] message_length;
 logic [31:0] words_remaining;
 //logic [31:0] wt;
 logic [31:0] h0, h1, h2, h3, h4, h5, h6, h7;
+logic [31:0] h_out[8];
 logic [31:0] a, b, c, d, e, f, g, h;
 logic [ 7:0] i, j; //j = block counter, i = sha compression round counter
 logic [15:0] offset; // in word address
@@ -51,6 +52,7 @@ assign num_blocks = determine_num_blocks(NUM_OF_WORDS);
 //assign tstep = (i - 1);
 assign message_length = 32*NUM_OF_WORDS;
 assign words_remaining = NUM_OF_WORDS - j*16;
+
 
 // Note : Function defined are for reference purpose. Feel free to add more functions or modify below.
 // Function to determine number of blocks in memory to fetch
@@ -169,15 +171,13 @@ begin
 	 end
 	 else if(j == num_blocks -2 && words_remaining===14) begin
 	 //special case
-		state<= WRITE;
+		state<= WRITE_0;
 	 end
 	 //normal case
 	 //create last block using last words of msg, padding, and msg size
 	 //first load remaining words into w
 	 else if(j === num_blocks -1 && words_to_read!==words_remaining) begin
 		words_to_read <= words_remaining;
-		cur_addr <= cur_addr + offset - 1;
-		offset<=0;
 		state<= READ_0;
 	 end
 	 else if(j=== num_blocks -1 && words_to_read === words_remaining) begin//build rest of block
@@ -192,8 +192,10 @@ begin
 	 end
 		
 	 else begin //j> num_blocks -1, move to write
-	 state <= WRITE;
-	 
+	 state <= WRITE_0; //prep writing
+	 offset <= 0;
+	 cur_addr <= output_addr;
+	 {h_out[0], h_out[1], h_out[2], h_out[3], h_out[4], h_out[5], h_out[6], h_out[7]} <= {h0, h1, h2, h3, h4, h5, h6, h7};
 	 end
 
     end
@@ -215,9 +217,10 @@ begin
 		  if(i<64) begin
 				
 				if(i<48) begin //do 1 word expansion (first 16 already done, so only need 48 more)
+				w_t[i+16] = wtnew();
 				for (int m = 0; m < 15; m++) w[m] = w[m+1]; // just wires
-				w[15] = wtnew();
-				w_t[i+16] = w[15];
+				w[15] = w_t[i+16];
+				
 				end
 				//do 1 compression
 				{a, b, c, d, e, f, g, h} = sha256_op(a, b, c, d, e, f, g, h, w_t[i], i);
@@ -252,17 +255,29 @@ begin
 	 else if (words_to_read === words_remaining) begin
 	 state <= BLOCK; //reading into last block
 	 end
-	 else state <= COMPUTE_0;
+	 else begin state <= COMPUTE_0;
+		cur_addr <= cur_addr + offset - 1;
+		offset<=0;
+	 end
 	 end
 
     // h0 to h7 each are 32 bit hashes, which makes up total 256 bit value
     // h0 to h7 after compute stage has final computed hash value
     // write back these h0 to h7 to memory starting from output_addr
-    WRITE: begin
-   
-
-	state<=IDLE;
-    end
+	 WRITE_0: begin
+	 cur_we <= 1;
+	 cur_write_data <= h_out[offset];
+	 state <= WRITE_1;
+	 end
+	 WRITE_1: begin
+	 if(offset<16) begin
+	 cur_we <= 1;
+	 cur_write_data <= h_out[offset+1];
+	 offset <= offset +1;
+	 state <= WRITE_1;
+	 end
+	 else state<= IDLE;
+	 end
    endcase
   end
 
