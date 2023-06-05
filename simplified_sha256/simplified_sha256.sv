@@ -17,7 +17,7 @@ enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE_0, COMPUTE_1, WRITE_0, WR
 logic [31:0] w[16]; //block pre expansion
 logic [31:0] w_t[64]; //block post expansion
 logic [63:0] message_length;
-logic [31:0] words_remaining;
+logic [15:0] words_remaining;
 //logic [31:0] wt;
 logic [31:0] h0, h1, h2, h3, h4, h5, h6, h7;
 logic [31:0] h_out[8];
@@ -169,10 +169,10 @@ begin
 		words_to_read <= 8'd16;
 		state <= READ_0;
 	 end
-	 else if(j == num_blocks -2 && words_remaining===14) begin
+//	 else if(j == num_blocks -2 && words_remaining===14) begin
 	 //special case
-		state<= WRITE_0;
-	 end
+//		state<= WRITE_0;
+//	 end
 	 //normal case
 	 //create last block using last words of msg, padding, and msg size
 	 //first load remaining words into w
