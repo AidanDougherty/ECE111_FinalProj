@@ -216,15 +216,17 @@ begin
 	 //do 1 compression and 1 word expansion per cycle
 		  if(i<64) begin
 				
-				if(i<48) begin //do 1 word expansion (first 16 already done, so only need 48 more)
-				w_t[i+16] = wtnew();
+				if(i<48) begin //do 1 word expansion (first 16 already done, so only need 48 more) and 1 compression
+				
+				{a, b, c, d, e, f, g, h} <= sha256_op(a, b, c, d, e, f, g, h, w_t[0], i);
 				for (int m = 0; m < 15; m++) w[m] <= w[m+1]; // just wires
 				w[15] <= w_t[i+16];
+				w_t[i+16] <= wtnew();
 				
 				end
-				//do 1 compression
-				{a, b, c, d, e, f, g, h} <= sha256_op(a, b, c, d, e, f, g, h, w_t[i], i);
-				
+				else if (i>=48) begin
+				{a, b, c, d, e, f, g, h} <= sha256_op(a, b, c, d, e, f, g, h, w_t[i-48], i);
+				end
 				i <= i+1;
 				state <= COMPUTE_1;
 		  end
