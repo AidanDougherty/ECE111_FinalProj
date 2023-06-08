@@ -15,7 +15,7 @@ enum logic [2:0] {IDLE, READ_0, READ_1, BLOCK, COMPUTE_0, COMPUTE_1, WRITE_0, WR
 
 // Local variables
 logic [31:0] w[16]; //block pre expansion
-logic [31:0] w_t[64]; //block post expansion
+//logic [31:0] w_t[64]; //block post expansion
 logic [63:0] message_length;
 logic [15:0] words_remaining;
 //logic [31:0] wt;
@@ -206,8 +206,8 @@ begin
     // move to WRITE stage
     COMPUTE_0: begin
 	// First 16 Word expansion, then move to 64 processing rounds steps for 512-bit block 
-		  for (int n = 0; n<16; n++)
-		  w_t[n] <= w[n]; //keep first 16 words the same
+		  //for (int n = 0; n<16; n++)
+		  //w_t[n] <= w[n]; //keep first 16 words the same
 		  
 		  
 		  state <= COMPUTE_1;
