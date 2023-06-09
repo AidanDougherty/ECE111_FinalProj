@@ -196,18 +196,18 @@ begin
 	 COMPUTE_1b: begin
 		if(i<64) begin
 		
-			if(i<48) begin //do 16x 1 word expansion and 16x 1 SHA compression
+			//do 16x 1 word expansion and 16x 1 SHA compression (don't need to do word expansion for last 16 rounds
+			for(int k=0; k<num_nonces; k++) begin
+				{A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k]} <= sha256_op(A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k], w[k][i<48 ? 0: i-48], i);
+			end
+			if(i<48) begin 
 				for(int k=0; k<num_nonces; k++) begin
-					{A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k]} <= sha256_op(A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k], w[k][0], i);
 					for(int n=0; n<15; n++) w[k][n] <= w[k][n+1]; //just wires
 					w[k][15] <= wtnew(k);
-				end
+					end
 			end
-			else begin //done with word compression, just 16x 1 SHA compression;
-				for(int k=0; k<num_nonces; k++) begin
-					{A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k]} <= sha256_op(A[k], B[k], C[k], D[k], E[k], F[k], G[k], H[k], w[k][i-48], i);
-				end
-			end
+			
+			
 			
 			i<=i+1;
 			state<=COMPUTE_1b;
